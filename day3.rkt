@@ -8,10 +8,6 @@
   (require rackunit))
 
 (define DAY2-SESSION-COOKIE "53616c7465645f5f8116a80bce7c23d7df91d8f7fd2714ec1987ff706becd7441ef83276b16c27ad25cd17c9c1b73040")
-(define TURN 'turn)
-(define HORIZONTAL 'horizontal)
-(define VERTICAL 'vertical)
-(define BOTH 'both)
 
 (define (solve-day3)
   (define wire-paths
@@ -34,12 +30,12 @@
   (check-equal? (sort (find-crossings paths1) < #:key car)
                 (sort (list (cons 3 3) (cons 6 5)) < #:key car)))
 (define (find-crossings paths)
-  (foldl (lambda (coord-orientation crossings)
-           (define coord (car coord-orientation))
+  (foldl (lambda (coord-wires crossings)
+           (define coord (car coord-wires))
            (define coord-x (car coord))
            (define coord-y (cdr coord))
-           (define orientation (cdr coord-orientation))
-           (if (eq? orientation BOTH)
+           (define wires (cdr coord-wires))
+           (if (list? wires)
                (cons (cons coord-x coord-y) crossings)
                crossings))
          '()
@@ -49,31 +45,31 @@
   (define paths2 (list (list "R2" "U3") (list "U2" "R3")))
   (check-equal? (count-wires paths2)
                 (hash
-                 (cons 1 0) HORIZONTAL (cons 2 0) TURN
-                 (cons 2 1) VERTICAL (cons 2 2) BOTH (cons 2 3) TURN
-                 (cons 0 1) VERTICAL (cons 0 2) TURN
-                 (cons 1 2) HORIZONTAL (cons 3 2) TURN)))
-(define (count-wires paths)
+                 (cons 1 0) 0 (cons 2 0) 0
+                 (cons 2 1) 0 (cons 2 2) (list 0 1) (cons 2 3) 0
+                 (cons 0 1) 1 (cons 0 2) 1
+                 (cons 1 2) 1 (cons 3 2) 1)))
+(define (count-wires wires)
   (define wire-counts (hash))
   (define coord-x 0)
   (define coord-y 0)
-  (for ([path paths])
-    (for ([step path])
+  (for ([wire-idx (in-naturals)]
+        [wire wires])
+    (for ([step wire])
       (define direction (string-ref step 0))
       (define amount (string->number (substring step 1)))
       (define-values
-        (path-orientations new-x new-y)
-        (count-wire coord-x coord-y direction amount))
+        (wire-count new-x new-y)
+        (count-wire wire-idx coord-x coord-y direction amount))
       (set! wire-counts
             (hash-union
              wire-counts
-             path-orientations
-             #:combine/key
-             (lambda (_ orientation1 orientation2)
-               (cond
-                 [(or (eq? orientation1 TURN) (eq? orientation2 TURN)) TURN]
-                 [(eq? orientation1 orientation2) orientation1]
-                 [else BOTH]))))
+             wire-count
+             #:combine/key (lambda (_ wire1 wire2)
+                             (if (= wire1 wire2)
+                                 wire1
+                                 (list (min wire1 wire2)
+                                       (max wire1 wire2))))))
       (set! coord-x new-x)
       (set! coord-y new-y))
     (set! coord-x 0)
@@ -91,134 +87,83 @@
            (check-equal? list1 list2 test-name))]))
   
   (check-values-equal?
-   (count-wire 0 0 #\U 5)
+   (count-wire 1 0 0 #\U 5)
    (values
-    (hash-set
-     (for*/hash ([x (in-range 0 1)]
-                 [y (in-range 1 5)])
-       (values (cons x y) VERTICAL))
-     (cons 0 5)
-     TURN)
+    (for*/hash ([x (in-range 0 1)]
+                [y (in-range 1 6)])
+      (values (cons x y) 1))
     0
     5)
    "count-wire up")
 
   (check-values-equal?
-   (count-wire 0 0 #\R 5)
+   (count-wire 2 0 0 #\R 5)
    (values
-    (hash-set
-     (for*/hash ([x (in-range 1 5)]
-                 [y (in-range 0 1)])
-       (values (cons x y) HORIZONTAL))
-     (cons 5 0)
-     TURN)
+    (for*/hash ([x (in-range 1 6)]
+                [y (in-range 0 1)])
+      (values (cons x y) 2))
     5
     0)
    "count-wire right")
 
   (check-values-equal?
-   (count-wire 0 5 #\D 5)
+   (count-wire 2 0 5 #\D 5)
    (values
     (for*/hash ([x (in-range 0 1)]
-                [y (in-range 1 5)])
-      (values (cons x y) VERTICAL))
+                [y (in-range 1 6)])
+      (values (cons x y) 2))
     0
     0)
    "count-wire down")
 
   (check-values-equal?
-   (count-wire 5 0 #\L 5)
+   (count-wire 1 5 0 #\L 5)
    (values
-    (for*/hash ([x (in-range 1 5)]
+    (for*/hash ([x (in-range 1 6)]
                 [y (in-range 0 1)])
-      (values (cons x y) HORIZONTAL))
+      (values (cons x y) 1))
     0
     0)
    "count-wire left"))
 
-(define (count-wire x y direction amount)
+(define (count-wire wire-number x y direction amount)
   (cond
-    [(char=? direction #\U) (go-up x y amount)]
-    [(char=? direction #\D) (go-down x y amount)]
-    [(char=? direction #\R) (go-right x y amount)]
-    [else (go-left x y amount)]))
+    [(char=? direction #\U) (go-up wire-number x y amount)]
+    [(char=? direction #\D) (go-down wire-number x y amount)]
+    [(char=? direction #\R) (go-right wire-number x y amount)]
+    [else (go-left wire-number x y amount)]))
 
-(define (go-up x start-y amount)
+(define (go-up wire-number x start-y amount)
   (define end-y (+ start-y amount))
   (define wires
-    (hash-set
-     (for*/hash ([y (in-range start-y end-y)]
-                 #:unless (and (= x 0) (= y 0)))
-       (values (cons x y) VERTICAL))
-     (cons x end-y)
-     TURN))
+    (for*/hash ([y (in-range start-y (+ end-y 1))]
+                #:unless (and (= x 0) (= y 0)))
+      (values (cons x y) wire-number)))
   (values wires x end-y))
 
-(define (go-down x start-y amount)
+(define (go-down wire-number x start-y amount)
   (define end-y (- start-y amount))
   (define wires
-    (for*/hash ([y (in-range (+ end-y 1) start-y)]
+    (for*/hash ([y (in-range end-y (+ start-y 1))]
                 #:unless (and (= x 0) (= y 0)))
-      (values (cons x y) VERTICAL)))
-  (unless (and (= x 0) (= end-y 0))
-    (set! wires (hash-set wires (cons x end-y) TURN)))
+      (values (cons x y) wire-number)))
   (values wires x end-y))
 
-(define (go-right start-x y amount)
+(define (go-right wire-number start-x y amount)
   (define end-x (+ start-x amount))
   (define wires
-    (hash-set
-     (for*/hash ([x (in-range start-x end-x)]
-                 #:unless (and (= x 0) (= y 0)))
-       (values (cons x y) HORIZONTAL))
-     (cons end-x y)
-     TURN))
+    (for*/hash ([x (in-range start-x (+ end-x 1))]
+                #:unless (and (= x 0) (= y 0)))
+      (values (cons x y) wire-number)))
   (values wires end-x y))
 
-(define (go-left start-x y amount)
+(define (go-left wire-number start-x y amount)
   (define end-x (- start-x amount))
   (define wires
-    (for*/hash ([x (in-range (+ end-x 1) start-x)]
+    (for*/hash ([x (in-range end-x (+ start-x 1))]
                 #:unless (and (= x 0) (= y 0)))
-      (values (cons x y) HORIZONTAL)))
-  (unless (and (= end-x 0) (= y 0))
-    (set! wires (hash-set wires (cons end-x y) TURN)))
+      (values (cons x y) wire-number)))
   (values wires end-x y))
-    
-;  (define-values (x-min x-max final-x y-min y-max final-y orientation)
-;    (cond
-;      [(char=? direction #\U)
-;       (values x (+ x 1) x (+ y 1) (+ y amount) (+ y amount) VERTICAL)]
-;      [(char=? direction #\D)
-;       (values x
-;               (+ x 1)
-;               x
-;               (max 0 (+ (- y amount) 1))
-;               y
-;               (max 0 (+ (- y amount) 1))
-;               VERTICAL)]
-;      [(char=? direction #\R)
-;       (values (+ x 1) (+ x amount) (+ x amount) y (+ y 1) y HORIZONTAL)]
-;      [(char=? direction #\L)
-;       (values (max 0 (+ (- x amount) 1))
-;               x
-;               (max 0 (+ (- x amount) 1))
-;               y
-;               (+ y 1)
-;               y
-;               HORIZONTAL)]))
-;  (define orientations
-;    (for*/hash ([x (in-range x-min x-max)]
-;                [y (in-range y-min y-max)]
-;                #:unless (and (= x 0) (= y 0)))
-;      (values (cons x y) orientation)))
-;  (set! orientations
-;        (hash-set orientations
-;                  (if (eq? orientation VERTICAL)
-;                      (cons x-min y-max)
-;                      (cons x-max y-min))
-;                  TURN))
-;  (values orientations final-x final-y))
 
 (module+ test
   (define coords '((3 . 3) (3 . 4) (4 . 4)))
