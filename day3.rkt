@@ -182,9 +182,3 @@
 
 (module+ main
   (solve-day3))
-
-#;(match-lambda
-    [(list (list (cons coord-x coord-y) wire-count) crossings)
-     (if (> wire-count 1)
-         (cons (cons coord-x coord-y) crossings)
-         crossings)])
